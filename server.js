@@ -1,9 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
-const { DefaultAzureCredential } = require('@azure/identity');
 const { BlobServiceClient } = require('@azure/storage-blob');
-const { TableClient } = require('@azure/data-tables');
+const { TableClient, AzureNamedKeyCredential } = require('@azure/data-tables');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
@@ -26,18 +25,21 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Azure Blob Storage Configuration
+// Azure Storage Configuration
+const storageConnectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
 const accountName = process.env.AZURE_STORAGE_ACCOUNT_NAME;
+const accountKey = process.env.AZURE_STORAGE_ACCOUNT_KEY;
 const containerName = process.env.AZURE_CONTAINER_NAME;
-const credential = new DefaultAzureCredential();
-const blobServiceClient = new BlobServiceClient(
-  `https://${accountName}.blob.core.windows.net`,
-  credential
-);
+const tableName = process.env.AZURE_TABLE_NAME;
+
+// Create credential using account name and key
+const credential = new AzureNamedKeyCredential(accountName, accountKey);
+
+// Blob Storage Client
+const blobServiceClient = BlobServiceClient.fromConnectionString(storageConnectionString);
 const containerClient = blobServiceClient.getContainerClient(containerName);
 
-// Azure Table Storage Configuration
-const tableName = process.env.AZURE_TABLE_NAME;
+// Table Storage Client
 const tableClient = new TableClient(
   `https://${accountName}.table.core.windows.net`,
   tableName,
@@ -80,7 +82,7 @@ passport.use(new OIDCStrategy({
   clientSecret: process.env.AZURE_AD_CLIENT_SECRET,
   responseType: 'code',
   responseMode: 'query',
-  redirectUrl: process.env.AZURE_AD_REDIRECT_URL, // Use HTTPS for Azure
+  redirectUrl: process.env.AZURE_AD_REDIRECT_URL,
   allowHttpForRedirectUrl: false,
   scope: ['profile', 'email', 'openid']
 }, function (iss, sub, profile, accessToken, refreshToken, done) {
@@ -125,7 +127,6 @@ app.post('/upload', ensureAuthenticated, upload.array('files'), async (req, res)
       await blockBlobClient.uploadFile(file.path);
       fs.unlinkSync(file.path);
       uploadResults.push(blobName);
-      // Log upload action
       await logAction(req.user.oid, 'upload', blobName, { fileSize: file.size });
     }
 
@@ -157,7 +158,6 @@ app.get('/download/:filename', ensureAuthenticated, async (req, res) => {
     const downloadBlockBlobResponse = await blobClient.download();
     res.setHeader('Content-Disposition', `attachment; filename=${req.params.filename}`);
     downloadBlockBlobResponse.readableStreamBody.pipe(res);
-    // Log download action
     await logAction(req.user.oid, 'download', req.params.filename);
   } catch (err) {
     console.error('Download error:', err.message);
@@ -170,7 +170,6 @@ app.delete('/delete/:filename', ensureAuthenticated, async (req, res) => {
   try {
     const blobClient = containerClient.getBlobClient(req.params.filename);
     await blobClient.deleteIfExists();
-    // Log delete action
     await logAction(req.user.oid, 'delete', req.params.filename);
     res.send({ message: 'Deleted' });
   } catch (err) {
@@ -186,7 +185,6 @@ app.post('/update', ensureAuthenticated, upload.single('file'), async (req, res)
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
     await blockBlobClient.uploadFile(req.file.path, { overwrite: true });
     fs.unlinkSync(req.file.path);
-    // Log update action
     await logAction(req.user.oid, 'update', blobName, { fileSize: req.file.size });
     res.send({ message: 'Updated' });
   } catch (err) {
@@ -208,7 +206,6 @@ app.get('/preview/:filename', ensureAuthenticated, async (req, res) => {
 
     res.setHeader('Content-Type', contentType);
     downloadResponse.readableStreamBody.pipe(res);
-    // Log preview action
     await logAction(req.user.oid, 'preview', req.params.filename);
   } catch (err) {
     console.error('Preview error:', err.message);
