@@ -80,7 +80,7 @@ passport.use(new OIDCStrategy({
   clientSecret: process.env.AZURE_AD_CLIENT_SECRET,
   responseType: 'code',
   responseMode: 'query',
-  redirectUrl: `https://${process.env.WEBSITE_HOSTNAME}/auth/redirect`, // Use HTTPS for Azure
+  redirectUrl: process.env.AZURE_AD_REDIRECT_URL, // Use HTTPS for Azure
   allowHttpForRedirectUrl: false,
   scope: ['profile', 'email', 'openid']
 }, function (iss, sub, profile, accessToken, refreshToken, done) {
@@ -105,7 +105,7 @@ app.get('/auth/redirect',
 );
 app.get('/logout', (req, res) => {
   req.logout(err => {
-    const redirectUrl = `https://${process.env.WEBSITE_HOSTNAME}/logout`;
+    const redirectUrl = `https://cloudsystem-cra3e8aeafhgg3ek.eastasia-01.azurewebsites.net/logout`;
     res.redirect(`https://login.microsoftonline.com/common/oauth2/logout?post_logout_redirect_uri=${redirectUrl}`);
   });
 });
