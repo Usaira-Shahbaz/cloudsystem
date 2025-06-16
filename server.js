@@ -80,8 +80,8 @@ passport.use(new OIDCStrategy({
   clientSecret: process.env.AZURE_AD_CLIENT_SECRET,
   responseType: 'code',
   responseMode: 'query',
-  redirectUrl: process.env.AZURE_AD_REDIRECT_URL,
-  allowHttpForRedirectUrl: true,
+  redirectUrl: `https://${process.env.WEBSITE_HOSTNAME}/auth/redirect`, // Use HTTPS for Azure
+  allowHttpForRedirectUrl: false,
   scope: ['profile', 'email', 'openid']
 }, function (iss, sub, profile, accessToken, refreshToken, done) {
   if (!profile.oid) return done(new Error("No OID found"), null);
@@ -105,7 +105,7 @@ app.get('/auth/redirect',
 );
 app.get('/logout', (req, res) => {
   req.logout(err => {
-    const redirectUrl = 'https://localhost:3000/logout';
+    const redirectUrl = `https://${process.env.WEBSITE_HOSTNAME}/logout`;
     res.redirect(`https://login.microsoftonline.com/common/oauth2/logout?post_logout_redirect_uri=${redirectUrl}`);
   });
 });
@@ -262,4 +262,8 @@ app.get('/analytics', ensureAuthenticated, async (req, res) => {
   }
 });
 
-app.listen(3000, () => console.log('Server started at http://localhost:3000'));
+// Start server
+const port = process.env.PORT || 3000;
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Server running on port ${port}`);
+});
