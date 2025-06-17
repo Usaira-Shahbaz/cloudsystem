@@ -120,18 +120,14 @@ app.get('/me', (req, res) => {
 app.post('/upload', ensureAuthenticated, upload.array('files'), async (req, res) => {
   try {
     const uploadResults = [];
-    const userId = req.user.oid;
 
     for (const file of req.files) {
-      const originalName = file.originalname;
-      const blobName = `${userId}/${originalName}`; // Prefix with userId
+      const blobName = file.originalname;
       const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-      await blockBlobClient.uploadFile(file.path, {
-        metadata: { ownerId: userId } // Store userId in blob metadata
-      });
+      await blockBlobClient.uploadFile(file.path);
       fs.unlinkSync(file.path);
-      uploadResults.push(originalName); // Return original name for client
-      await logAction(userId, 'upload', originalName, { fileSize: file.size });
+      uploadResults.push(blobName);
+      await logAction(req.user.oid, 'upload', blobName, { fileSize: file.size });
     }
 
     res.send({ message: `Uploaded ${uploadResults.length} files.`, files: uploadResults });
@@ -144,17 +140,10 @@ app.post('/upload', ensureAuthenticated, upload.array('files'), async (req, res)
 // List Files
 app.get('/files', ensureAuthenticated, async (req, res) => {
   try {
-    const userId = req.user.oid;
     const files = [];
-
-    for await (const blob of containerClient.listBlobsFlat({ prefix: `${userId}/` })) {
-      const blobClient = containerClient.getBlobClient(blob.name);
-      const properties = await blobClient.getProperties();
-      if (properties.metadata && properties.metadata.ownerId === userId) {
-        files.push(blob.name.replace(`${userId}/`, '')); // Strip userId prefix
-      }
+    for await (const blob of containerClient.listBlobsFlat()) {
+      files.push(blob.name);
     }
-
     res.send(files);
   } catch (err) {
     console.error('List error:', err.message);
@@ -165,19 +154,11 @@ app.get('/files', ensureAuthenticated, async (req, res) => {
 // Download File
 app.get('/download/:filename', ensureAuthenticated, async (req, res) => {
   try {
-    const userId = req.user.oid;
-    const blobName = `${userId}/${req.params.filename}`;
-    const blobClient = containerClient.getBlobClient(blobName);
-    const properties = await blobClient.getProperties();
-
-    if (!properties.metadata || properties.metadata.ownerId !== userId) {
-      return res.status(403).send({ error: 'Access denied' });
-    }
-
+    const blobClient = containerClient.getBlobClient(req.params.filename);
     const downloadBlockBlobResponse = await blobClient.download();
     res.setHeader('Content-Disposition', `attachment; filename=${req.params.filename}`);
     downloadBlockBlobResponse.readableStreamBody.pipe(res);
-    await logAction(userId, 'download', req.params.filename);
+    await logAction(req.user.oid, 'download', req.params.filename);
   } catch (err) {
     console.error('Download error:', err.message);
     res.status(500).send({ error: err.message });
@@ -187,17 +168,9 @@ app.get('/download/:filename', ensureAuthenticated, async (req, res) => {
 // Delete File
 app.delete('/delete/:filename', ensureAuthenticated, async (req, res) => {
   try {
-    const userId = req.user.oid;
-    const blobName = `${userId}/${req.params.filename}`;
-    const blobClient = containerClient.getBlobClient(blobName);
-    const properties = await blobClient.getProperties();
-
-    if (!properties.metadata || properties.metadata.ownerId !== userId) {
-      return res.status(403).send({ error: 'Access denied' });
-    }
-
+    const blobClient = containerClient.getBlobClient(req.params.filename);
     await blobClient.deleteIfExists();
-    await logAction(userId, 'delete', req.params.filename);
+    await logAction(req.user.oid, 'delete', req.params.filename);
     res.send({ message: 'Deleted' });
   } catch (err) {
     console.error('Delete error:', err.message);
@@ -208,22 +181,11 @@ app.delete('/delete/:filename', ensureAuthenticated, async (req, res) => {
 // Update File (Re-upload)
 app.post('/update', ensureAuthenticated, upload.single('file'), async (req, res) => {
   try {
-    const userId = req.user.oid;
-    const originalName = req.file.originalname;
-    const blobName = `${userId}/${originalName}`;
+    const blobName = req.file.originalname;
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-    const properties = await blockBlobClient.getProperties();
-
-    if (properties.metadata && properties.metadata.ownerId !== userId) {
-      return res.status(403).send({ error: 'Access denied' });
-    }
-
-    await blockBlobClient.uploadFile(req.file.path, {
-      overwrite: true,
-      metadata: { ownerId: userId }
-    });
+    await blockBlobClient.uploadFile(req.file.path, { overwrite: true });
     fs.unlinkSync(req.file.path);
-    await logAction(userId, 'update', originalName, { fileSize: req.file.size });
+    await logAction(req.user.oid, 'update', blobName, { fileSize: req.file.size });
     res.send({ message: 'Updated' });
   } catch (err) {
     console.error('Update error:', err.message);
@@ -234,15 +196,7 @@ app.post('/update', ensureAuthenticated, upload.single('file'), async (req, res)
 // File Preview
 app.get('/preview/:filename', ensureAuthenticated, async (req, res) => {
   try {
-    const userId = req.user.oid;
-    const blobName = `${userId}/${req.params.filename}`;
-    const blobClient = containerClient.getBlobClient(blobName);
-    const properties = await blobClient.getProperties();
-
-    if (!properties.metadata || properties.metadata.ownerId !== userId) {
-      return res.status(403).send({ error: 'Access denied' });
-    }
-
+    const blobClient = containerClient.getBlobClient(req.params.filename);
     const downloadResponse = await blobClient.download();
     const contentType = blobClient.name.match(/\.(jpg|jpeg|png|gif)$/i)
       ? 'image/' + blobClient.name.split('.').pop()
@@ -252,7 +206,7 @@ app.get('/preview/:filename', ensureAuthenticated, async (req, res) => {
 
     res.setHeader('Content-Type', contentType);
     downloadResponse.readableStreamBody.pipe(res);
-    await logAction(userId, 'preview', req.params.filename);
+    await logAction(req.user.oid, 'preview', req.params.filename);
   } catch (err) {
     console.error('Preview error:', err.message);
     res.status(500).send({ error: err.message });
@@ -275,27 +229,22 @@ app.get('/logs', ensureAuthenticated, async (req, res) => {
 // Analytics
 app.get('/analytics', ensureAuthenticated, async (req, res) => {
   try {
-    const userId = req.user.oid;
     const fileCategories = { Images: 0, Text: 0, Others: 0 };
     let totalSize = 0;
     let fileCount = 0;
 
-    for await (const blob of containerClient.listBlobsFlat({ prefix: `${userId}/` })) {
-      const blobClient = containerClient.getBlobClient(blob.name);
-      const properties = await blobClient.getProperties();
-      if (properties.metadata && properties.metadata.ownerId === userId) {
-        fileCount++;
-        totalSize += properties.contentLength || 0;
+    for await (const blob of containerClient.listBlobsFlat()) {
+      fileCount++;
+      totalSize += blob.properties.contentLength || 0;
 
-        const ext = path.extname(blob.name).toLowerCase();
+      const ext = path.extname(blob.name).toLowerCase();
 
-        if (ext.match(/\.(jpg|jpeg|png|gif)$/i)) {
-          fileCategories.Images++;
-        } else if (ext.match(/\.(txt|md|log|csv|json|js|html|css)$/i)) {
-          fileCategories.Text++;
-        } else {
-          fileCategories.Others++;
-        }
+      if (ext.match(/\.(jpg|jpeg|png|gif)$/i)) {
+        fileCategories.Images++;
+      } else if (ext.match(/\.(txt|md|log|csv|json|js|html|css)$/i)) {
+        fileCategories.Text++;
+      } else {
+        fileCategories.Others++;
       }
     }
 
@@ -315,3 +264,4 @@ const port = process.env.PORT || 3000;
 app.listen(port, '0.0.0.0', () => {
   console.log(`Server running on port ${port}`);
 });
+
