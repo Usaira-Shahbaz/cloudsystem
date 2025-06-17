@@ -1103,8 +1103,8 @@
         <i class="fas fa-sign-out-alt"></i> Logout
       </button>
       <button id="logsBtn" class="btn btn-outline" style="display:none;">
-        <i class="fas fa-list"></i> View Logs
-      </button>
+  <i class="fas fa-list"></i> View Logs
+</button>
     </div>
   </header>
 
@@ -1118,6 +1118,7 @@
         <p class="login-subtitle">Secure cloud storage with enterprise-grade protection</p>
         <button id="loginBtn" class="btn btn-lg azure-btn">
           <i class="fab fa-microsoft"></i>
+          
           Login with Azure AD
         </button>
       </div>
@@ -1281,7 +1282,6 @@
     const previewContent = document.getElementById('previewContent');
     const toast = document.getElementById('toast');
     const logsBtn = document.getElementById('logsBtn');
-
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {
       checkAuthStatus();
@@ -1337,24 +1337,24 @@
 
     // Authentication functions
     async function checkAuthStatus() {
-      try {
-        const response = await fetch('/me');
-        if (response.ok) {
-          showFileSection();
-          logoutBtn.style.display = 'inline-flex';
-          logsBtn.style.display = 'inline-flex';
-          await Promise.all([loadFiles(), loadAnalytics()]);
-        } else {
-          showAuthSection();
-          logoutBtn.style.display = 'none';
-          logsBtn.style.display = 'none';
-        }
-      } catch (error) {
-        showAuthSection();
-        logoutBtn.style.display = 'none';
-        logsBtn.style.display = 'none';
-      }
+  try {
+    const response = await fetch('/me');
+    if (response.ok) {
+      showFileSection();
+      logoutBtn.style.display = 'inline-flex'; // Ensure logout button is visible
+      logsBtn.style.display = 'inline-flex';   // Show logs button when authenticated
+      await Promise.all([loadFiles(), loadAnalytics()]);
+    } else {
+      showAuthSection();
+      logoutBtn.style.display = 'none';
+      logsBtn.style.display = 'none';
     }
+  } catch (error) {
+    showAuthSection();
+    logoutBtn.style.display = 'none';
+    logsBtn.style.display = 'none';
+  }
+}
 
     function login() {
       window.location.href = '/login';
@@ -1463,11 +1463,10 @@
           loadFiles();
           loadAnalytics();
         } else {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Upload failed');
+          throw new Error('Upload failed');
         }
       } catch (error) {
-        showToast(`Upload failed: ${error.message}`, 'error');
+        showToast('Upload failed. Please try again.', 'error');
       } finally {
         uploadBtn.disabled = false;
         uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Upload Files';
@@ -1485,8 +1484,6 @@
         if (response.ok) {
           currentFiles = await response.json();
           renderFileList();
-        } else {
-          throw new Error('Failed to load files');
         }
       } catch (error) {
         showToast('Failed to load files', 'error');
@@ -1539,20 +1536,20 @@
             <div class="file-info">
               <i class="fas ${fileIcon} file-icon ${fileType}"></i>
               <div class="file-details">
-                <div class="file-name" onclick="previewFile('${encodeURIComponent(fileName)}')">${fileName}</div>
+                <div class="file-name" onclick="previewFile('${fileName}')">${fileName}</div>
                 <div class="file-meta">
                   <span>Type: ${getFileExtension(fileName).toUpperCase()}</span>
                 </div>
               </div>
             </div>
             <div class="file-actions">
-              <button class="btn btn-icon btn-outline" onclick="previewFile('${encodeURIComponent(fileName)}')" title="Preview">
+              <button class="btn btn-icon btn-outline" onclick="previewFile('${fileName}')" title="Preview">
                 <i class="fas fa-eye"></i>
               </button>
-              <button class="btn btn-icon btn-primary" onclick="downloadFile('${encodeURIComponent(fileName)}')" title="Download">
+              <button class="btn btn-icon btn-primary" onclick="downloadFile('${fileName}')" title="Download">
                 <i class="fas fa-download"></i>
               </button>
-              <button class="btn btn-icon btn-danger" onclick="deleteFile('${encodeURIComponent(fileName)}')" title="Delete">
+              <button class="btn btn-icon btn-danger" onclick="deleteFile('${fileName}')" title="Delete">
                 <i class="fas fa-trash"></i>
               </button>
             </div>
@@ -1569,7 +1566,7 @@
             const fileIcon = getFileIcon(fileType);
             
             return `
-              <div class="file-grid-item" onclick="previewFile('${encodeURIComponent(fileName)}')">
+              <div class="file-grid-item" onclick="previewFile('${fileName}')">
                 <i class="fas ${fileIcon} file-grid-icon ${fileType}"></i>
                 <div class="file-grid-name">${fileName}</div>
                 <div class="file-grid-meta">${getFileExtension(fileName).toUpperCase()}</div>
@@ -1595,31 +1592,30 @@
     // File operations
     async function downloadFile(fileName) {
       try {
-        const response = await fetch(`/download/${fileName}`);
+        const response = await fetch(`/download/${encodeURIComponent(fileName)}`);
         if (response.ok) {
           const blob = await response.blob();
           const url = window.URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = decodeURIComponent(fileName);
+          a.download = fileName;
           document.body.appendChild(a);
           a.click();
           window.URL.revokeObjectURL(url);
           document.body.removeChild(a);
           showToast('File downloaded successfully', 'success');
         } else {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Download failed');
+          throw new Error('Download failed');
         }
       } catch (error) {
-        showToast(`Download failed: ${error.message}`, 'error');
+        showToast('Download failed', 'error');
       }
     }
 
     async function deleteFile(fileName) {
       const result = await Swal.fire({
         title: 'Delete File?',
-        text: `Are you sure you want to delete "${decodeURIComponent(fileName)}"?`,
+        text: `Are you sure you want to delete "${fileName}"?`,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#ef4444',
@@ -1629,7 +1625,7 @@
 
       if (result.isConfirmed) {
         try {
-          const response = await fetch(`/delete/${fileName}`, {
+          const response = await fetch(`/delete/${encodeURIComponent(fileName)}`, {
             method: 'DELETE'
           });
 
@@ -1638,36 +1634,34 @@
             loadFiles();
             loadAnalytics();
           } else {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Delete failed');
+            throw new Error('Delete failed');
           }
         } catch (error) {
-          showToast(`Delete failed: ${error.message}`, 'error');
+          showToast('Delete failed', 'error');
         }
       }
     }
 
     async function previewFile(fileName) {
       try {
-        modalTitle.textContent = decodeURIComponent(fileName);
+        modalTitle.textContent = fileName;
         const fileType = getFileType(fileName);
         
         if (fileType === 'image') {
           previewContent.innerHTML = `
-            <img src="/preview/${fileName}" 
-                 alt="${decodeURIComponent(fileName)}" 
+            <img src="/preview/${encodeURIComponent(fileName)}" 
+                 alt="${fileName}" 
                  class="preview-image"
                  onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
             <p style="display:none;">Unable to preview this image</p>
           `;
         } else if (fileType === 'text') {
-          const response = await fetch(`/preview/${fileName}`);
+          const response = await fetch(`/preview/${encodeURIComponent(fileName)}`);
           if (response.ok) {
             const text = await response.text();
             previewContent.innerHTML = `<pre class="preview-text">${text}</pre>`;
           } else {
-            const errorData = await response.json();
-            previewContent.innerHTML = `<p>${errorData.error || 'Unable to preview this file'}</p>`;
+            previewContent.innerHTML = '<p>Unable to preview this file</p>';
           }
         } else {
           previewContent.innerHTML = `
@@ -1683,7 +1677,7 @@
         
         previewModal.style.display = 'block';
       } catch (error) {
-        showToast(`Preview failed: ${error.message}`, 'error');
+        showToast('Preview failed', 'error');
       }
     }
 
@@ -1766,7 +1760,7 @@
 
     // Utility functions
     function getFileType(fileName) {
-      const ext = getFileExtension(decodeURIComponent(fileName));
+      const ext = getFileExtension(fileName);
       if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'].includes(ext)) {
         return 'image';
       } else if (['txt', 'md', 'log', 'csv', 'json', 'js', 'html', 'css', 'xml'].includes(ext)) {
@@ -1825,33 +1819,33 @@
     }
 
     async function fetchLogs() {
-      try {
-        const res = await fetch('/logs');
-        if (!res.ok) throw new Error('Failed to fetch logs');
-        
-        const logs = await res.json();
-        let logHtml = logs.length ? logs.map(log => `
-          <li style="margin-bottom: 1rem; padding: 0.5rem; border-bottom: 1px solid var(--border);">
-            <strong>${log.action.toUpperCase()}</strong> - ${log.fileName || 'N/A'} 
-            <br><small>${new Date(log.timestamp).toLocaleString()} (Details: ${log.details || 'N/A'})</small>
-          </li>
-        `).join('') : '<li>No logs available</li>';
+  try {
+    const res = await fetch('/logs');
+    if (!res.ok) throw new Error('Failed to fetch logs');
+    
+    const logs = await res.json();
+    let logHtml = logs.length ? logs.map(log => `
+      <li style="margin-bottom: 1rem; padding: 0.5rem; border-bottom: 1px solid var(--border);">
+        <strong>${log.action.toUpperCase()}</strong> - ${log.fileName || 'N/A'} 
+        <br><small>${new Date(log.timestamp).toLocaleString()} (Details: ${log.details || 'N/A'})</small>
+      </li>
+    `).join('') : '<li>No logs available</li>';
 
-        Swal.fire({
-          title: 'Activity Logs',
-          html: `<ul style="max-height: 60vh; overflow-y: auto; padding: 1rem; background: rgba(255, 255, 255, 0.95); border-radius: var(--radius-sm);">${logHtml}</ul>`,
-          showConfirmButton: false,
-          background: 'rgba(255, 255, 255, 0.95)',
-          showCloseButton: true,
-          width: '80%',
-          padding: '2rem',
-          backdrop: 'rgba(0, 0, 0, 0.6)'
-        });
-      } catch (err) {
-        console.error('Log fetch failed', err);
-        showToast('Failed to load logs. Please try again.', 'error');
-      }
-    }
+    Swal.fire({
+      title: 'Activity Logs',
+      html: `<ul style="max-height: 60vh; overflow-y: auto; padding: 1rem; background: rgba(255, 255, 255, 0.95); border-radius: var(--radius-sm);">${logHtml}</ul>`,
+      showConfirmButton: false,
+      background: 'rgba(255, 255, 255, 0.95)',
+      showCloseButton: true,
+      width: '80%',
+      padding: '2rem',
+      backdrop: 'rgba(0, 0, 0, 0.6)'
+    });
+  } catch (err) {
+    console.error('Log fetch failed', err);
+    showToast('Failed to load logs. Please try again.', 'error');
+  }
+}
   </script>
 </body>
 </html>
